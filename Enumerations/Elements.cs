@@ -13,5 +13,6 @@ namespace Aion.Enumeration
         Light = 7,
         Dark = 8,
         Almighty = 9,
+        Passive = 10, // Passive moves do not deal damage, but can have other effects
     }
 }

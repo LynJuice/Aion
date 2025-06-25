@@ -19,20 +19,22 @@ namespace Aion
         // Units
         List<UnitBase> FriendlyUnits = new List<UnitBase>();
         List<UnitBase> EnemyUnits = new List<UnitBase>();
+        // Runtime data
+        public int ActionPoints = 0; // ActionPoints This Turn
         #region Initalization 
         void Awake()
         {
-            // Ensure that there is only one instance of AionManager
+            // Ensure that there is only one instance of AionManager in this scene
             if (Instance == null)
             {
                 Instance = this;
-                DontDestroyOnLoad(gameObject);
             }
-            else
+            else if (Instance != this)
             {
-                Destroy(gameObject);
+                Destroy(gameObject); // Destroy any duplicates
             }
         }
+
 
         #endregion
     }

@@ -2,6 +2,7 @@ using UnityEngine;
 
 namespace Aion.Bases
 {
+    using System.Collections.Generic;
     using Aion.Enumeration;
     [CreateAssetMenu(fileName = "Aion", menuName = "Aion/Aion", order = 1)]
     public class AionBase : ScriptableObject
@@ -19,6 +20,9 @@ namespace Aion.Bases
         public Affinity Wind = Affinity.Neutral;
         public Affinity Light = Affinity.Neutral;
         public Affinity Dark = Affinity.Neutral;
+
+        // List of moves for this Aion
+        List<MoveBase> Moves = new List<MoveBase>();
     }
 }
 
