@@ -12,6 +12,7 @@ namespace Aion.Bases
         public int HPCost = 0; // Health Points
         public int MPCost = 0; // Mana Points
         public int APCost = 0; // Action Points
+        public EffectBase AppliedEffect; // The effect that can be applied when this move hits
 
         public int MinimumDamage = 0; // the minimum ammount of damage dealt by this move if it hits
         public int MaximumDamage = 100; // the maximum ammount of damage dealt by this move if it hits
