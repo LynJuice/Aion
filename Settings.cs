@@ -17,4 +17,6 @@ public static class Settings
     public static float EvasionClampMin = 5f;
     public static float EvasionClampMax = 95f;
     public static float AgilityBuffMultiplier = 0.05f; // The multiplier for the Agility buff effect on Evasion and crical hit chance
+    public static int ChargeProcentageFromCriticalHit = 25;
+    public static int ChargeProcentageFromWeaknessHit = 5;
 }

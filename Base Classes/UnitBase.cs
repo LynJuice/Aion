@@ -19,6 +19,8 @@ namespace Aion.Bases
         [SerializeField][Tooltip("Affects both physical and magical damage taken")][Range(1, 100)] int Endurance = 10;
         [SerializeField][Tooltip("Affects accuracy and evasion and turn order")][Range(1, 100)] int Agility = 10;
         [SerializeField][Tooltip("Affects chances of dealing or taking critical damage")][Range(1, 100)] int Luck = 10;
+        [SerializeField][Tooltip("Ultimate power move of the unit")] MoveBase Move = new MoveBase();
+        [SerializeField][Tooltip("Ultimate moves charge procentage")][Range(0, 100)] int ChargeProcentage = 0; 
         public List<EquipmentBase> Equipment = new List<EquipmentBase>();
         [Space]
         [SerializeField][Tooltip("Current Health of the unit")] int CurrentHealth;
@@ -154,7 +156,7 @@ namespace Aion.Bases
                     }
             }
         }
-        public bool UseMove(MoveBase move, UnitBase selectedUnit)
+        public bool UseMove(MoveBase move, List<UnitBase> selectedUnits)
         {
             // Checks to see if the unit can use this move (Failsafe)
             if (!CanUseMP(move.MPCost))
@@ -176,16 +178,33 @@ namespace Aion.Bases
 
             if (move.Type != Elements.Passive)
             {
-                UseOffensiveMove(move, selectedUnit);
+                UseOffensiveMove(move, selectedUnits);
+                ChargeProcentage = Mathf.Clamp(ChargeProcentage, 0, 100); // Clamp the charge percentage to 0-100
                 return true;
             }
             else
-                return UseDefensiveMove(move, selectedUnit);
+            {
+                ChargeProcentage = Mathf.Clamp(ChargeProcentage, 0, 100); // Clamp the charge percentage to 0-100
+                UseDefensiveMove(move, selectedUnits);
+                return true;
+            }
         }
-        bool UseDefensiveMove(MoveBase Move, UnitBase selectedUnit)
+        void UseDefensiveMove(MoveBase Move, List<UnitBase> selectedUnit)
         {
-            // Todo In the future, add defensive moves that can heal or buff the unit
-            return true; 
+            foreach (UnitBase unit in selectedUnit)
+            {
+                if (Move.AppliedEffect != null)
+                {
+                    AddEffect(Move, unit);
+                }
+
+                unit.CurrentHealth = Mathf.Clamp(unit.CurrentHealth + Move.HealingAmount, 0, unit.MaxHealth); // healing
+                OnMoveHit(Move,unit,false,false,0);
+            }
+
+            RemoveHP(Move.HPCost);
+            RemoveMP(Move.MPCost);
+            AionManager.Instance.ActionPoints -= Move.APCost; // Normal AP cost
         }
         void EvaluateMoveSet()
         {
@@ -234,6 +253,7 @@ namespace Aion.Bases
             if (affinity == Affinity.Weak)
             {
                 damage = Mathf.RoundToInt(damage * Settings.WeaknessMultiplier);
+                ChargeProcentage += Settings.ChargeProcentageFromWeaknessHit; // Charge the ultimate move for hitting a weak unit
             }
 
             if (affinity == Affinity.Resist)
@@ -250,65 +270,93 @@ namespace Aion.Bases
 
             return damage;
         }
-        void UseOffensiveMove(MoveBase Move, UnitBase selectedUnit)
+        void UseOffensiveMove(MoveBase Move, List<UnitBase> selectedUnits)
         {
             // Calculate the all the variables of this attack before we execute it and take away the costs
 
-            bool evaded = DidEvade(selectedUnit);
+            bool AtleastOneEvaded = false;
+            bool AtleastOneCriticalHit = false;
             bool isPhysical = Move.Type == Elements.Slash || Move.Type == Elements.Gun || Move.Type == Elements.Bash;
-            bool criticalHit = isCriticalHit(isPhysical);
-            int damage = CalculateDamage(Move,selectedUnit,criticalHit,isPhysical,out Affinity affinity);
-            
 
-            if (Move.AppliedEffect != null)
+
+            foreach (UnitBase unit in selectedUnits)
             {
-                EffectBase newEffect = Instantiate(Move.AppliedEffect);
-                newEffect.OnApply(); // Call the effect's OnApply method
-                newEffect.CurrentDuration = newEffect.Duration;
+                bool evaded = DidEvade(unit);
+                bool criticalHit = isCriticalHit(isPhysical);
+                int damage = CalculateDamage(Move, unit, criticalHit, isPhysical, out Affinity affinity);
 
-                selectedUnit.AgilityBuff += newEffect.AgilityModifier;
-                selectedUnit.AttackBuff += newEffect.AttackModifier;
-                selectedUnit.DefenseBuff += newEffect.DefenseModifier;
-                
-                selectedUnit.AgilityBuff = Mathf.Clamp(selectedUnit.AgilityBuff, -3, 3);
-                selectedUnit.AttackBuff = Mathf.Clamp(selectedUnit.AttackBuff, -3, 3);
-                selectedUnit.DefenseBuff = Mathf.Clamp(selectedUnit.DefenseBuff, -3, 3);
+                if (evaded)
+                    AtleastOneEvaded = true;
+                if (criticalHit)
+                    AtleastOneCriticalHit = true;
 
+                if (Move.AppliedEffect != null && !evaded)
+                {
+                    AddEffect(Move, unit);
+                }
 
-                selectedUnit.AppliedEffects.Add(newEffect); // Add the effect to the unit's list of applied effects
-                selectedUnit.OnBuffStarted(newEffect); // Call the buff started animation
+                if (evaded)
+                {
+                    OnMoveMiss(Move,unit);
+                }
+                else if (criticalHit)
+                {
+                    if (affinity == Affinity.Absorb)
+                        unit.AddHP(damage); // Attack got absorbed 
+                    else
+                        unit.RemoveHP(damage);
+
+                    OnMoveHit(Move, unit,criticalHit,affinity == Affinity.Absorb,damage);
+                }
+                else
+                {
+                    if(affinity == Affinity.Absorb)
+                        unit.AddHP(damage);
+                    else
+                        unit.RemoveHP(damage);
+
+                    OnMoveHit(Move, unit, criticalHit, affinity == Affinity.Absorb, damage);
+                }
             }
 
             // now we can calculate the AP cost and remove the costs from the unit
             RemoveHP(Move.HPCost);
             RemoveMP(Move.MPCost);
+
             // Check if the move was evaded, critical hit or normal hit
-            if (evaded)
+            if (AtleastOneEvaded)
             {
                 AionManager.Instance.ActionPoints -= Mathf.RoundToInt(Move.APCost * Settings.APEvasionPunishmentMultiplier); // punish the player for evasion
-                OnMoveMiss(Move, selectedUnit); // Call the miss animation
             }
             else
-            if (criticalHit)
+            if (AtleastOneCriticalHit)
             {
                 AionManager.Instance.ActionPoints -= Mathf.RoundToInt(Move.APCost * Settings.ApRewardMultiplier); // reward the player for a critical hit
-                if (affinity == Affinity.Absorb)
-                    selectedUnit.AddHP(damage); // Attack got absorbed 
-                else
-                    selectedUnit.RemoveHP(damage);
-
-                OnMoveHit(Move, selectedUnit, criticalHit, affinity == Affinity.Absorb, damage); // Call the hit animation
+                ChargeProcentage += Settings.ChargeProcentageFromCriticalHit;
             }
             else
             {
                 AionManager.Instance.ActionPoints -= Move.APCost; // Normal AP cost
-                if (affinity == Affinity.Absorb)
-                    selectedUnit.AddHP(damage); // Attack got absorbed
-                else
-                    selectedUnit.RemoveHP(damage);
-
-                OnMoveHit(Move, selectedUnit, criticalHit, affinity == Affinity.Absorb, damage); // Call the hit animation
             }
+        }
+
+        private static void AddEffect(MoveBase Move, UnitBase unit)
+        {
+            EffectBase newEffect = Instantiate(Move.AppliedEffect);
+            newEffect.OnApply(); // Call the effect's OnApply method
+            newEffect.CurrentDuration = newEffect.Duration;
+
+            unit.AgilityBuff += newEffect.AgilityModifier;
+            unit.AttackBuff += newEffect.AttackModifier;
+            unit.DefenseBuff += newEffect.DefenseModifier;
+
+            unit.AgilityBuff = Mathf.Clamp(unit.AgilityBuff, -3, 3);
+            unit.AttackBuff = Mathf.Clamp(unit.AttackBuff, -3, 3);
+            unit.DefenseBuff = Mathf.Clamp(unit.DefenseBuff, -3, 3);
+
+
+            unit.AppliedEffects.Add(newEffect); // Add the effect to the unit's list of applied effects
+            unit.OnBuffStarted(newEffect); // Call the buff started animation
         }
         #endregion
 
