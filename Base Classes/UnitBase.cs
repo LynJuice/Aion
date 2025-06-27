@@ -19,6 +19,7 @@ namespace Aion.Bases
         [SerializeField][Tooltip("Affects both physical and magical damage taken")][Range(1, 100)] int Endurance = 10;
         [SerializeField][Tooltip("Affects accuracy and evasion and turn order")][Range(1, 100)] int Agility = 10;
         [SerializeField][Tooltip("Affects chances of dealing or taking critical damage")][Range(1, 100)] int Luck = 10;
+        public List<EquipmentBase> Equipment = new List<EquipmentBase>();
         [Space]
         [SerializeField][Tooltip("Current Health of the unit")] int CurrentHealth;
         [SerializeField][Tooltip("Current Mana of the unit")] int CurrentMana;
@@ -26,14 +27,17 @@ namespace Aion.Bases
         [SerializeField][Tooltip("Affects Attack (Physical and Magical) Runtime only, can be increased or decresed (-3,3) with buff and debuff effects")] int AttackBuff;
         [SerializeField][Tooltip("Affects Defense (Physical and Magical) Runtime only, can be increased or decresed (-3,3) with buff and debuff effects")] int DefenseBuff;
         [SerializeField][Tooltip("Affects Critical hit chance and evasion Runtime only, can be increased or decresed (-3,3) with buff and debuff effects")] int AgilityBuff;
-
+        [SerializeField][Tooltip("A copy of Aions moves and equipment moves because there is a possibily a same Aion could be in the same battle as another with a differnt moveset")] List<MoveBase> Moves;
         void Awake()
         {
             CurrentHealth = MaxHealth;
             CurrentMana = MaxMana;
             if (Aion == null)
                 Debug.LogError("Aion is not set for " + gameObject.name + ". Please assign an AionBase to this unit.");
+            EvaluateMoveSet();
         }
+
+
 
         #region Functions
         #region Add Remove HP/MP
@@ -183,7 +187,30 @@ namespace Aion.Bases
             // Todo In the future, add defensive moves that can heal or buff the unit
             return true; 
         }
+        void EvaluateMoveSet()
+        {
+            Moves.AddRange(Aion.Moves);
 
+            foreach (EquipmentBase equipment in Equipment)
+            {
+                if (equipment != null)
+                {
+                    Strength += equipment.StrenghtModifier;
+                    Magic += equipment.MagicModifier;
+                    Endurance += equipment.EnduraceModifier;
+                    Agility += equipment.AgilityModifier;
+                    Luck += equipment.LuckModifier;
+                    // Add the moves from the equipment to the unit's moves
+                    foreach (MoveBase move in equipment.ExtraMoves)
+                    {
+                        if (move != null && !Moves.Contains(move))
+                        {
+                            Moves.Add(move);
+                        }
+                    }
+                }
+            }
+        }
         int CalculateDamage(MoveBase Move, UnitBase selectedUnit, bool criticalHit, bool isPhysical, out Affinity affinity)
         {
             int damage = 0;

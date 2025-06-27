@@ -22,7 +22,7 @@ namespace Aion.Bases
         public Affinity Dark = Affinity.Neutral;
 
         // List of moves for this Aion
-        List<MoveBase> Moves = new List<MoveBase>();
+        public List<MoveBase> Moves = new List<MoveBase>();
     }
 }
 
