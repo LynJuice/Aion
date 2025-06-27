@@ -12,15 +12,15 @@ namespace Aion.Bases
         [Header("Units required data")]
         [SerializeField][Tooltip("Maximum Health of the unit")] int MaxHealth = 100;
         [SerializeField][Tooltip("Maximum Mana of the unit")] int MaxMana = 100;
-        [SerializeField][Tooltip("Points given per turn")] int PointsPerTurn = 1;
+        [Tooltip("Points given per turn")] public int PointsPerTurn = 1;
         [SerializeField][Tooltip("The Current Aion")] AionBase Aion;
-        [SerializeField][Tooltip("Affects physical attack damage dealt")][Range(1, 100)] int Strength = 10;
-        [SerializeField][Tooltip("Affects magical attack damage dealt")][Range(1, 100)] int Magic = 10;
-        [SerializeField][Tooltip("Affects both physical and magical damage taken")][Range(1, 100)] int Endurance = 10;
-        [SerializeField][Tooltip("Affects accuracy and evasion and turn order")][Range(1, 100)] int Agility = 10;
-        [SerializeField][Tooltip("Affects chances of dealing or taking critical damage")][Range(1, 100)] int Luck = 10;
-        [SerializeField][Tooltip("Ultimate power move of the unit")] MoveBase Move = new MoveBase();
-        [SerializeField][Tooltip("Ultimate moves charge procentage")][Range(0, 100)] int ChargeProcentage = 0; 
+        [Tooltip("Affects physical attack damage dealt")][Range(1, 100)] public int Strength = 10;
+        [Tooltip("Affects magical attack damage dealt")][Range(1, 100)] public int Magic = 10;
+        [Tooltip("Affects both physical and magical damage taken")][Range(1, 100)] public int Endurance = 10;
+        [Tooltip("Affects accuracy and evasion and turn order")][Range(1, 100)] public int Agility = 10;
+        [Tooltip("Affects chances of dealing or taking critical damage")][Range(1, 100)] public int Luck = 10;
+        [SerializeField][Tooltip("Ultimate power move of the unit")] MoveBase UltimateMove = new MoveBase();
+        [SerializeField][Tooltip("Ultimate moves charge percentage")][Range(0, 100)] int ChargePercentage = 0; 
         public List<EquipmentBase> Equipment = new List<EquipmentBase>();
         [Space]
         [SerializeField][Tooltip("Current Health of the unit")] int CurrentHealth;
@@ -30,6 +30,7 @@ namespace Aion.Bases
         [SerializeField][Tooltip("Affects Defense (Physical and Magical) Runtime only, can be increased or decresed (-3,3) with buff and debuff effects")] int DefenseBuff;
         [SerializeField][Tooltip("Affects Critical hit chance and evasion Runtime only, can be increased or decresed (-3,3) with buff and debuff effects")] int AgilityBuff;
         [SerializeField][Tooltip("A copy of Aions moves and equipment moves because there is a possibily a same Aion could be in the same battle as another with a differnt moveset")] List<MoveBase> Moves;
+        public bool IsActive;
         void Awake()
         {
             CurrentHealth = MaxHealth;
@@ -160,11 +161,17 @@ namespace Aion.Bases
         {
             // Checks to see if the unit can use this move (Failsafe)
             if (!CanUseMP(move.MPCost))
-                return false;
+                return false;   // Not enought MP
             if (!CanUseHP(move.HPCost))
-                return false;
+                return false;   // Not enought HP
             if (AionManager.Instance.ActionPoints < move.APCost)
-                return false;
+                return false;   // Not enough Action Points
+            if (!IsActive)
+                return false;   // Unit is not active
+            if (move.IsUltimate && ChargePercentage != 100 || UltimateMove != move.IsUltimate)
+                return false;   // Ultimate move is not charged or the move is a ultimate move but for the wrong user...
+
+            IsActive = false; // Set the unit to inactive after using a move 
 
             foreach (EffectBase effect in AppliedEffects)
             {
@@ -173,18 +180,19 @@ namespace Aion.Bases
                 {
                     effect.OnRemove(); // Call the effect's OnRemove method
                     OnBuffEnded(effect); // Call the buff ended animation
+                    AppliedEffects.Remove(effect); // Remove the effect from the unit's list of applied effects
                 }
             }
 
             if (move.Type != Elements.Passive)
             {
                 UseOffensiveMove(move, selectedUnits);
-                ChargeProcentage = Mathf.Clamp(ChargeProcentage, 0, 100); // Clamp the charge percentage to 0-100
+                ChargePercentage = Mathf.Clamp(ChargePercentage, 0, 100); // Clamp the charge percentage to 0-100
                 return true;
             }
             else
             {
-                ChargeProcentage = Mathf.Clamp(ChargeProcentage, 0, 100); // Clamp the charge percentage to 0-100
+                ChargePercentage = Mathf.Clamp(ChargePercentage, 0, 100); // Clamp the charge percentage to 0-100
                 UseDefensiveMove(move, selectedUnits);
                 return true;
             }
@@ -253,7 +261,7 @@ namespace Aion.Bases
             if (affinity == Affinity.Weak)
             {
                 damage = Mathf.RoundToInt(damage * Settings.WeaknessMultiplier);
-                ChargeProcentage += Settings.ChargeProcentageFromWeaknessHit; // Charge the ultimate move for hitting a weak unit
+                ChargePercentage += Settings.ChargePercentageFromWeaknessHit; // Charge the ultimate move for hitting a weak unit
             }
 
             if (affinity == Affinity.Resist)
@@ -323,8 +331,13 @@ namespace Aion.Bases
             RemoveHP(Move.HPCost);
             RemoveMP(Move.MPCost);
 
+            if (Move.IsUltimate)
+            {
+                ChargePercentage = 0;// reset it
+            }
+
             // Check if the move was evaded, critical hit or normal hit
-            if (AtleastOneEvaded)
+            if (AtleastOneEvaded && !Move.IsUltimate)
             {
                 AionManager.Instance.ActionPoints -= Mathf.RoundToInt(Move.APCost * Settings.APEvasionPunishmentMultiplier); // punish the player for evasion
             }
@@ -332,15 +345,14 @@ namespace Aion.Bases
             if (AtleastOneCriticalHit)
             {
                 AionManager.Instance.ActionPoints -= Mathf.RoundToInt(Move.APCost * Settings.ApRewardMultiplier); // reward the player for a critical hit
-                ChargeProcentage += Settings.ChargeProcentageFromCriticalHit;
+                ChargePercentage += Settings.ChargePercentageFromCriticalHit;
             }
             else
             {
                 AionManager.Instance.ActionPoints -= Move.APCost; // Normal AP cost
             }
         }
-
-        private static void AddEffect(MoveBase Move, UnitBase unit)
+        void AddEffect(MoveBase Move, UnitBase unit)
         {
             EffectBase newEffect = Instantiate(Move.AppliedEffect);
             newEffect.OnApply(); // Call the effect's OnApply method
@@ -358,10 +370,20 @@ namespace Aion.Bases
             unit.AppliedEffects.Add(newEffect); // Add the effect to the unit's list of applied effects
             unit.OnBuffStarted(newEffect); // Call the buff started animation
         }
+        public void SetActive()
+        {
+            if (Aion == null)
+            {
+                Debug.LogError("Aion is not set for " + gameObject.name + ". Please assign an AionBase to this unit.");
+                return;
+            }
+            IsActive = true;
+            OnActivated();
+        }
         #endregion
 
         #region Animation Callbacks
-        // These are used to call animations and special effects
+            // These are used to call animations and special effects
         public virtual void OnMoveHit(MoveBase move, UnitBase target, bool critical,bool absorbed, int Damage)
         {
 
@@ -377,6 +399,9 @@ namespace Aion.Bases
         public virtual void OnBuffStarted(EffectBase effect)
         {
 
+        }
+        public virtual void OnActivated()
+        {
         }
         #endregion
     }
